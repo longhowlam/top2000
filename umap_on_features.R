@@ -59,26 +59,44 @@ library(h2o)
 # initialiseer h2o via R
 #h2o.init(nthreads=-1, port=54323, startH2O = FALSE)
 h2o.init()
+top2000Audio2 = top2000Audio2 %>% mutate(ouderdom = 2018 - as.numeric(stringr::str_sub(releasedate,1,4)))
+
 ttrain.h2o = as.h2o(top2000Audio2) 
+traintest = h2o.splitFrame(ttrain.h2o)
+
+linreg = h2o.glm(
+  x = c(8:18, 23, 26,28),
+  y = "positie",
+  training_frame  = traintest[[1]],
+  validation_frame = traintest[[2]]
+)
+linreg
 
 
 RFmodel = h2o.randomForest(
-  x = c(8:18, 23, 26),
+  x = c(8:18, 23, 26,28),
   y = "positie",
-  training_frame  = ttrain.h2o
+  training_frame  = traintest[[1]],
+  validation_frame = traintest[[2]]
   )
 RFmodel
 
+h2o.varimp_plot(linreg)
+predlm = h2o.predict(linreg, ttrain.h2o) %>% as.data.frame()
+top2000Audio2$predictedlinreg = predlm$predict
 
 h2o.varimp_plot(RFmodel)
-pred = h2o.predict(RFmodel, ttrain.h2o) %>% as.data.frame()
-top2000Audio2$predicted = pred$predict
+predRF = h2o.predict(RFmodel, ttrain.h2o) %>% as.data.frame()
+top2000Audio2$predictedRF = predRF$predict
 
 rsq <- function (x, y) cor(x, y) ^ 2
-rsq(top2000Audio2$positie, top2000Audio2$predicted)
+rsq(top2000Audio2$positie, top2000Audio2$predictedlinreg)
+rsq(top2000Audio2$positie, top2000Audio2$predictedRF)
+rsq(top2000Audio2$positie, top2000Audio2$popularity)
 
 
 ggplot(top2000Audio2, aes(popularity,positie)) + geom_point() + geom_smooth(method = lm) + labs(title = "Top2000 positie versus Spotify popularity")
 
 
-ggplot(top2000Audio2, aes(predicted,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Spotify popularity")
+ggplot(top2000Audio2, aes(predictedlinreg,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Random Forest predicted positie")
+ggplot(top2000Audio2, aes(predictedRF,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Random Forest predicted positie")
