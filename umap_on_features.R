@@ -103,15 +103,26 @@ ggplot(top2000TrainSet2, aes(popularity,positie)) + geom_point() + geom_smooth(m
 
 
 ggplot(top2000TrainSet2, aes(predictedlinreg,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Random Forest predicted positie")
-p = ggplot(top2000TrainSet2, aes(predictedRF,positie)) +
+
+
+top2000TrainSet2 = top2000TrainSet2 %>% 
+  mutate(
+    RFrank = rank(predictedRF)
+  )
+
+
+p = ggplot(top2000TrainSet2, aes(RFrank,positie)) +
   geom_point(
-    alpha = 0.5, 
-    aes(text = paste(
+    alpha = 0.75, 
+    aes(
+      colour = popularity,
+      text = paste(
       artist, "<br>", song, " ", "<br> top 2000 positie", positie, "<br> spotify popularity", popularity)
     )
   ) + 
+  scale_color_gradient(low="green", high="red") +
   geom_smooth(se = FALSE, size = 1.4) +
-  labs(title = "Top2000 positie versus Random Forest voorspelde positie")
+  labs(title = "Top2000 positie versus Random Forest voorspelde positie", y="2018 top2000 positie", x = "random forest voorspelde positie")
 p
 ggplotly(p)
 
