@@ -5,19 +5,23 @@ library(plotly)
 library(reticulate)
 use_condaenv("my_py36")
 
-top2000Audio2 = top2000 %>% 
+top2000TrainSet = top2000 %>% 
   left_join(top2000Audio, by = c("trackid" = "id")) %>% 
   left_join(top2000trackinfo) 
+top2000TrainSet = top2000TrainSet %>% mutate(ouderdom = 2018 - as.numeric(stringr::str_sub(releasedate,1,4)))
 
 plot_ly(
-  top2000Audio2, 
+  top2000TrainSet, 
+  text = ~paste(
+    artist, "<br>", song, " ", "<br> top 2000 positie", positie, "<br> spotify popularity", popularity),
   x = ~popularity,
   y = ~positie) 
 
-ggplot(top2000Audio2, aes(popularity,positie)) + geom_point() + geom_smooth(method = lm) + labs(title = "Top2000 positie versus Spotify popularity")
+ggplot(top2000TrainSet, aes(popularity,positie)) + geom_point() + geom_smooth(method = lm) + labs(title = "Top2000 positie versus Spotify popularity")
 
 
-featurematrix = top2000Audio2[, 8:18] %>%  as.matrix
+featurematrix = top2000TrainSet[, 8:18] %>%  as.matrix
+featurematrix = top2000TrainSet[, c(5,8:18,26,28)] %>%  as.matrix
 
 umap = import("umap")
 
@@ -31,16 +35,16 @@ embedding = umap$UMAP(
 ## compute UMAP with 3 components
 embedding_out = embedding$fit_transform(featurematrix)
 
-plotdata = data.frame(embedding_out)
-plotdata$trackid = top2000Audio2$trackid
-plotdata = plotdata %>% 
-  left_join(top2000Audio2) %>% 
+top2000TrainSet2 = data.frame(embedding_out)
+top2000TrainSet2$trackid = top2000TrainSet$trackid
+top2000TrainSet2 = top2000TrainSet2 %>% 
+  left_join(top2000TrainSet) %>% 
   mutate(duur_min = as.numeric(duration)/1000/60)
 
-text = paste(plotdata$artist, "<br>", plotdata$song, " ", plotdata$positie)
+text = paste(top2000TrainSet2$artist, "<br>", top2000TrainSet2$song, " ", top2000TrainSet2$positie)
 
 plot_ly(
-  plotdata, 
+  top2000TrainSet2, 
   x = ~X1,
   y = ~X2, 
   z = ~X3,
@@ -59,13 +63,13 @@ library(h2o)
 # initialiseer h2o via R
 #h2o.init(nthreads=-1, port=54323, startH2O = FALSE)
 h2o.init()
-top2000Audio2 = top2000Audio2 %>% mutate(ouderdom = 2018 - as.numeric(stringr::str_sub(releasedate,1,4)))
 
-ttrain.h2o = as.h2o(top2000Audio2) 
+
+ttrain.h2o = as.h2o(top2000TrainSet2) 
 traintest = h2o.splitFrame(ttrain.h2o)
 
 linreg = h2o.glm(
-  x = c(8:18, 23, 26,28),
+  x = c(1:3, 29,31,32),
   y = "positie",
   training_frame  = traintest[[1]],
   validation_frame = traintest[[2]]
@@ -74,7 +78,7 @@ linreg
 
 
 RFmodel = h2o.randomForest(
-  x = c(8:18, 23, 26,28),
+  x = c(11:21, 29,31,32),
   y = "positie",
   training_frame  = traintest[[1]],
   validation_frame = traintest[[2]]
@@ -83,20 +87,37 @@ RFmodel
 
 h2o.varimp_plot(linreg)
 predlm = h2o.predict(linreg, ttrain.h2o) %>% as.data.frame()
-top2000Audio2$predictedlinreg = predlm$predict
+top2000TrainSet2$predictedlinreg = predlm$predict
 
 h2o.varimp_plot(RFmodel)
 predRF = h2o.predict(RFmodel, ttrain.h2o) %>% as.data.frame()
-top2000Audio2$predictedRF = predRF$predict
+top2000TrainSet2$predictedRF = predRF$predict
 
 rsq <- function (x, y) cor(x, y) ^ 2
-rsq(top2000Audio2$positie, top2000Audio2$predictedlinreg)
-rsq(top2000Audio2$positie, top2000Audio2$predictedRF)
-rsq(top2000Audio2$positie, top2000Audio2$popularity)
+rsq(top2000TrainSet2$positie, top2000TrainSet2$predictedlinreg)
+rsq(top2000TrainSet2$positie, top2000TrainSet2$predictedRF)
+rsq(top2000TrainSet2$positie, top2000TrainSet2$popularity)
 
 
-ggplot(top2000Audio2, aes(popularity,positie)) + geom_point() + geom_smooth(method = lm) + labs(title = "Top2000 positie versus Spotify popularity")
+ggplot(top2000TrainSet2, aes(popularity,positie)) + geom_point() + geom_smooth(method = lm) + labs(title = "Top2000 positie versus Spotify popularity")
 
 
-ggplot(top2000Audio2, aes(predictedlinreg,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Random Forest predicted positie")
-ggplot(top2000Audio2, aes(predictedRF,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Random Forest predicted positie")
+ggplot(top2000TrainSet2, aes(predictedlinreg,positie)) + geom_point() + geom_smooth() + labs(title = "Top2000 positie versus Random Forest predicted positie")
+p = ggplot(top2000TrainSet2, aes(predictedRF,positie)) +
+  geom_point(
+    alpha = 0.5, 
+    aes(text = paste(
+      artist, "<br>", song, " ", "<br> top 2000 positie", positie, "<br> spotify popularity", popularity)
+    )
+  ) + 
+  geom_smooth(se = FALSE, size = 1.4) +
+  labs(title = "Top2000 positie versus Random Forest voorspelde positie")
+p
+ggplotly(p)
+
+
+
+
+################  
+
+saveRDS(top2000TrainSet, "top2000dataset.RDs")
